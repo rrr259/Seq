@@ -1,0 +1,363 @@
+#!/usr/bin/python3
+#importing all needed modules
+import subprocess
+import os
+import time
+import re
+import shutil
+import pandas as pd
+import matplotlib.pyplot as plt
+#creating new directory, making sure that if it exists, rewrite with new one by using shutil.rmtree
+if os.path.exists('ICA2_programme'):
+    shutil.rmtree('ICA2_programme')
+os.mkdir('ICA2_programme')
+os.chdir('ICA2_programme') #changing to current directory 
+print('BEGINING')
+time.sleep(0.5) #giving 0.5 before executing next line, for user to read message 
+print('A DIRECTORY WILL BE CREATED TO STORE ALL THE FILES')
+time.sleep(0.5)
+#executing first function to get the taxonomy geoup name from ncbi 
+def get_Taxoname():
+#making a while loop and using input to interact with user, so user can eneter taxonomy group name they want 
+    while True: 
+        taxoname= input('Hello, please enter a taxonomy name: ')
+
+        if taxoname.isdigit():
+            print('It is an intreger, please try again.') #if users puts numbers, instead of actual name programme, doesn't allow this input 
+            continue 
+        if not taxoname.strip():
+            print('Invalid responce please try again.') #if the responce is empty, will display invalid responce, coming back to the question   
+            continue 
+        responce= subprocess.getoutput('esearch -db taxonomy -query ' + taxoname + ' | efetch') # getting user input into subprocess.getoutput, to find the name in ncbi
+
+        if not responce:
+            print('Invalid responce, please try again') #if not will check for whitespaces, if empty responce, will print Invalid responce 
+            continue 
+        elif "FAILURE" in responce:
+            print('FAILURE occured, please try again') #if responce returns FAILURE, user have to try again
+            continue 
+        elif "ERROR" in responce: 
+            print('ERROR occured, please try again') #if responce returns ERROR, user have to try again 
+            continue 
+        elif "WARNING" in responce:
+            print('WARNING message, please try again') #if responce returns WARNING user have to try again 
+            continue 
+        else: 
+            print('OK, searching for results..') #if database has the name, proceeds to another function 
+            return responce
+result= get_Taxoname()
+#second function, takes the result from first and proceeds with it to check whether, the name user put, has one or several options (e.g. elephant would have 3 options, while birds or mammals only one)
+def get_Taxid(result):
+    time.sleep(0.5)
+    print('HERE ARE THE RESULTS')
+    time.sleep(0.5)
+    print(result)
+    result_list= result.splitlines() # spltting the result into list 
+    result_number= int(len(result_list) / 2) #converts splitted lines into intregers, go through list to divivde by 2
+#initiating while true loop 
+    while True: 
+        if result_number == 1: #if there is only one option, can ony proceed with it getting [0] first line which will have name and procceding with this result 
+            question= input('Only one choice available, would you like to continue or exit the programme (y/n): ')
+            if question == 'y':
+                tax_result = result_list[0]
+                print('Ok, proceeding with', tax_result)
+                return tax_result
+            elif question == 'n':
+                print('Ok, EXITING PROGRAMME')
+                quit() # if user don't want to proceeed can quit the programme 
+            else:
+                print('Invalid responce, please try again.') #in case the responce is not y or n (e.g. whitespace or integer, doesn't allow to proceed)
+                continue
+        if result_number > 1: #if responce have more then one option, user can choose 
+            question2= input('More than one option, please choose or exit the programme:') #doing input to ask for the number or can exit the programme 
+            if question2 == 'exit':
+                print('Ok, EXITING PROGRAMME')
+                quit()
+            elif question2.isdigit() and 1 <= int(question2) <= result_number: #isdigit() makes sure the input is an interger, so checks if the intreger is within range, e.g. if 3 option are given can't put 4
+                tax_chosen= (int(question2) - 1) * 2 #from the chosen option, getting the number of the line 
+                tax_result= result_list[tax_chosen] #grabbing the line from the list 
+                print('Ok, proceeding with: ', tax_result) #proceeding with the name 
+                return tax_result
+            else:
+                print('Invalid responce, please try again.') #if not exit or integer, would not allow to proceed
+                continue 
+result2= get_Taxid(result)
+#taking result from previuos function to new one to find tax id number 
+def get_Taxid2(result2):
+    time.sleep(0.5)
+    print('SEARCHING FOR ID...')
+    taxid = subprocess.getoutput('esearch -db taxonomy -query "' + result2 + '" | efetch -format taxid') #putting resu;ts into '' to find id 
+    print('Here is taxid:', taxid) #proceeding with the result 
+    return taxid
+taxid= get_Taxid2(result2)
+#this function will take taxid and with chosen protein will get sequences 
+def get_Protein(taxid):
+    while True:
+        print('To perform sequncing, you would need to eneter protein name')
+        time.sleep(0.5)
+        print('PLEASE be careful with spelling, in case of wrong spelling can return wrong protein or 0 sequences (ABC transporters instead of ABC transporter, will give 0 sequence result)')
+        time.sleep(0.5)
+        protein= input('Now, please enter protein name: ') #askig for a name 
+        
+        if protein.isdigit(): #checking if user puts only numbers, not allowing to proceed
+            print('It is an intreger, please try again.')
+            continue
+        
+        if not protein.strip():#checking if white space doesn't allow to proceed
+            print('Invalid responce please try again.')
+            continue
+        answer = subprocess.getoutput('esearch -db protein -query "' + protein + ' [PROT] AND txid' + taxid + ' [ORGN] NOT (predicted or hypothetical)"') #if valid responce, firstly want to check the count from ncbi
+        answer_lines= answer.splitlines() #splitting lines 
+        for line in answer_lines: #going though lines 
+            if '<Count>' in line: #looking for word Count 
+                protein_sequences= int(line.split('<Count>')[1].split('</Count>')[0].strip()) #getting rid of Count, to get only number and convert to intereger 
+                print('Here are the number of sequences:', protein_sequences) #displaying result 
+
+                if protein_sequences == 0: #if intreger is 0, sample rejected no sequences to analyze 
+                    print('The number of sequnces is 0, please try again')
+                    print('SAMPLE REJECTED')
+                    continue 
+                elif protein_sequences > 1000: #if intreger more then 1000, rejecting sample, to many to analyze (recomended limit)
+                    print('The number of sequnces is more then 1000, this is more then accepted limit')
+                    print('SAMPLE REJECTED')
+                    continue 
+                else:
+                    time.sleep(0.5)
+                    question2= input('Would you like to proceed with this dataset (y/n): ') #if the number is valid, can proceed, making sure user is happy with dataset 
+                    if question2 == 'y':
+                        sequences = subprocess.getoutput('esearch -db protein -query "' + protein + ' [PROT] AND txid' + taxid + ' [ORGN] NOT (predicted or hypothetical)" | efetch -format fasta > protein_sequences.fasta') #storing all data in separate fasta file 
+                        print('PROCESSING SEQUENCES')
+                        print('protein_sequences.fasta file created')
+                        return sequences
+                        if 'FAILURE' in sequences: #in case there is FAILURE returning from query, user needs to try again
+                            print('FAILRE occured please try again')
+                            continue
+                        elif 'ERROR' in sequences: #in case there is an ERROR returning from query, user needs to try again 
+                            print('ERROR occured please try again')
+                            continue 
+                        elif 'WARNING' in sequences:
+                            print('WARNING message please try again') #in case there is WARNING message, user needs to try again 
+                            continue 
+                    elif question2 == 'n':
+                        print('Ok, please try again.') #if user not happy to procced, can try again 
+                        continue
+                    else: 
+                        print('Invalid responce, please try again.') #not y or n, have to give valid responce 
+                        continue 
+result4= get_Protein(taxid)
+#this function craetes graph from fasta file 
+def get_Plot():
+    time.sleep(0.5)
+    print('MAKING GRAPH, PLEASE WAIT...')
+    subprocess.call('clustalo -i protein_sequences.fasta -o aligment.msf --threads 200 --force', shell=True) #getting aligment.smf for plotcon 
+    subprocess.call('plotcon -sequences aligment.msf -winsize 4 -graph pdf -goutfile platcon', shell=True) #craetig pdf file, user can download the graph 
+    subprocess.call('plotcon -sequences aligment.msf -winsize 4 -graph png -goutfile platcon', shell=True) #creating png 
+    subprocess.call('eog platcon.1.png', shell=True) #dispalying the graph 
+    return None 
+result3 =get_Plot()
+#this function gets motifs from PROSITE
+def get_Motifs():
+
+    os.mkdir('Patmatmotifs_files') #craeting new directory to store all patmatmotifs files in there 
+    time.sleep(0.5)
+    print('ANOTHER DIRECTORY Patmatmotifs_files WILL BE CREATED FOR ALL PATMATMOTIFS FILES')
+    time.sleep(0.5)
+    print('EACH FILE WILL BE NAMED ACCORDING TO ACCESSION NUMBER')
+    time.sleep(0.5)
+#opening and reading through fasta file, removes >
+    with open('protein_sequences.fasta', 'r') as seq_file: 
+        read_seq= seq_file.read()
+        sequences= read_seq.split('>')
+#craeting while true loop 
+    while True: 
+        question3= input('Would you like to consider simple post-translational modification sites, if yes simple patterns will be ignored (y/n): ')
+
+        if question3 == 'n' or question3 == 'y':
+            break #if users answer y or no the loop will break 
+        else: 
+            print('Invalid responce please try again') #if other responce will keep asking the question 
+    #this for loop will create multipe fatsa files for each sequnces, so they can be all processed for patamatmotifs 
+    for i in range(len(sequences)): #sequences is the string containing multiple sequences 
+        sequence = sequences[i] #value assigned to i sequences list
+        sequence_strip= sequence.strip() #removes white spaces
+        if sequence_strip: #going through sequences 
+            lines= sequence_strip.split('\n')  #splitting string, into substrings based on new line 
+            header= lines[0] #taking first element 
+            header_new= header.split(' ') #splitting using whitespace
+                
+            accession= header_new[0] #extracs the accession number 
+
+            filename_fasta= accession + '.fasta' #to name fasta files by accession number 
+            with open(filename_fasta, 'w') as seq2_file: #opening new file 
+                seq2_file.write( '>' + header + '\n') #get the header into new file, also append new line, so proceeding to the next line 
+                seq2_file.write('\n'.join(lines[1:])) #this writes sequence lines into a file 
+           
+        
+    #depending on user answer the question proceeds with or without post-translational modification sites, then getting all of the files together in one big file (easier to get data for all of the sequnces, also oppening patmotifs files to display to the user which motifs where found in wich sequence (accession number), also removing all fasta files created before 
+            if question3 == 'n':
+                time.sleep(0.3)
+                subprocess.call('patmatmotifs -sequence ' + filename_fasta + ' -outfile Patmatmotifs_files/' + accession + '.patmatmotifs -full', shell=True)
+                subprocess.call('cat Patmatmotifs_files/' + accession + '.patmatmotifs >> patmotifs_all', shell=True)
+                os.remove(filename_fasta)
+                with open('Patmatmotifs_files/' + accession + '.patmatmotifs') as files:
+                    files_p= files.read()
+                    files_pat= files_p.splitlines()
+                    for line in files_pat:
+                        if 'Motif =' in line:
+                            motif_pos= line.split(' ')
+                            motif_name= motif_pos[2]
+                            print('Motif found', motif_name, 'in', accession)
+                
+            if question3 == 'y':
+                time.sleep(0.3)
+                subprocess.call('patmatmotifs -sequence ' + filename_fasta + ' -outfile Patmatmotifs_files/' + accession + '.patmatmotifs -prune', shell=True)
+                subprocess.call('cat Patmatmotifs_files/' + accession + '.patmatmotifs >> patmotifs_all', shell=True)
+                os.remove(filename_fasta)
+                with open('Patmatmotifs_files/' + accession + '.patmatmotifs') as files:
+                    files_p= files.read()
+                    files_pat= files_p.splitlines()
+                    for line in files_pat:
+                        if 'Motif =' in line:
+                            motif_pos= line.split(' ')
+                            motif_name= motif_pos[2]
+                            print('Motif found', motif_name, 'in', accession)
+                
+                #here to get all motif counts per each sequence into the data frame and save csv file, created an empty directory, then 
+
+            motifs_found= {}
+            current_sequence= None
+            
+            with open('patmotifs_all', 'r') as mat_file: #have one big file with all sequnces and motifs, so open it to go through each line 
+                for line in mat_file:              
+                    if 'Sequence:' in line: #here get's the accession number for each sequence (checks if it's there)
+                        seq_pos= line.split(' ')
+                        current_sequence= seq_pos[2].strip()
+                        if current_sequence not in motifs_found:
+                            motifs_found[current_sequence] = {} #get's accession number  of each sequence, extracts it and gets an empty dictionary for motif counts  
+                    if'Motif =' in line and current_sequence: #checks if there is a motif in sequence, then if there is extracts the motif name and gets the count of those motifs
+                        motif_pos= line.split(' ')
+                        motif_name= motif_pos[2].strip()
+                        if motif_name not in motifs_found[current_sequence]:
+                            motifs_found[current_sequence][motif_name] = 0
+                        motifs_found[current_sequence][motif_name] += 1 
+
+                            
+            df_data= [] #creating an empty list to store dictionaries  
+            for seq, motif_count in motifs_found.items(): #creating another for loop, here it will go through motif_found dictionary, to make a list of dictionaries, in those dictionaries will have about each sequence and it's motif count 
+                new_data= {'Sequence': seq}
+                new_data.update(motif_count)
+                df_data.append(new_data)
+
+            df= pd.DataFrame(df_data) #creating data frame 
+            df.fillna(0, inplace=True) #if no motif was found in sequence will display in dataframe as zero
+            df.to_csv('motif_data.csv', index=True) #saving dataframe as csv file so user can open and look in it 
+            
+
+motifs =get_Motifs()
+#this function will get plot of counts of motfs for each sequence 
+def get_Barplot():
+    print('THE MOTIF_DATA.CSV FILE CREATED..')
+    time.sleep(0.5)
+    print('you can see results obtained from scanning from PROSITE database in the file')
+    time.sleep(0.5)
+    print('PLEASE WAIT PREPARING THE BAR PLOT...')
+    
+    df= pd.read_csv('motif_data.csv', index_col='Sequence') #to get the plot for csv, reading csv file and set "Sequence' column as index 
+    df = df.loc[:, ~df.columns.str.contains('^Unnamed')] #don't want to include 0 results, so exclude them (removing any columns that are Unnamed)
+    df.plot(kind='bar', stacked=True, figsize=(10,6)) #specifing that want a bar, also specifing sizes of te figures 
+    plt.xlabel('Sequence') #x-axis will be sequences(accession numbers)
+    plt.ylabel('Motif Count') #y-axis will be count of motifs (1,2,3 etc.)
+    plt.title('Counts of motifs for each sequence') #naming plot
+    plt.legend(title='Motif', bbox_to_anchor=(1.05, 1), loc='upper right') #adds legend to plot 
+    plt.tight_layout() #adjusting layouts 
+    plt.savefig('bar_plot.png')
+    print('BAR_PLOT.PNG CREATED')
+    time.sleep(1)
+    print('A bar cahrt "Counts of motifs for each sequence" was created')
+    time.sleep(1)
+get_Barplot()
+#this function performs garnier EMBOSS analysis 
+def get_garnier():
+
+    print('A REPORT_GARNIER.TXT FILE WILL BE CREATED...')
+    time.sleep(1)
+    print('report_garnier.txt will show predicted protein secondary structure using GOR method')
+    time.sleep(1)
+    print('PLEASE IGNORE ERROR MESSAGE, REPORT WILL BE PRODUCED')
+    time.sleep(1)
+    subprocess.call('garnier -sequence protein_sequences.fasta -outfile report.garnier', shell= True)
+    #here will craete a ganier file, that user can have a look at 
+get_garnier()
+#this function performs pepstats EMBROSS analysis, tehn getting values from the pepstat files and store them in data frame 
+def get_analysis():
+    os.mkdir('Pepstats_files') #creating separate directory to store pepstats files 
+    time.sleep(0.5)
+    print('ANOTHER DIRECTORY Pepstats_files WILL BE CREATED FOR ALL PEPSTATS  FILES')
+    time.sleep(0.5)
+    print('EACH FILE WILL BE NAMED ACCORDING TO ACCESSION NUMBER')
+    time.sleep(0.5)
+#again creating multiple fasta files for each sequence to get multiple pepstats files, and then get one file with all the information 
+    with open('protein_sequences.fasta', 'r') as seq_file:
+        read_seq= seq_file.read()
+        sequences= read_seq.split('>')
+    
+
+    for i in range(len(sequences)):
+        sequence = sequences[i]
+        sequence_strip= sequence.strip()
+        if sequence_strip:
+            lines= sequence_strip.split('\n')
+            header= lines[0]
+            header_new= header.split(' ')
+
+            accession= header_new[0]
+
+            filename_fasta= accession + '.fasta'
+            with open(filename_fasta, 'w') as seq2_file:
+                seq2_file.write( '>' + header + '\n')
+                seq2_file.write('\n'.join(lines[1:])) 
+
+            subprocess.call('pepstats -sequence ' + filename_fasta + ' -outfile Pepstats_files/' + accession + '.pepstats', shell=True)
+            subprocess.call('cat Pepstats_files/' + accession + '.pepstats >> pepstats_all', shell=True)
+            os.remove(filename_fasta)
+      #to create data frame from pepstat, used regression expressions this time, the way pepstats files are produced, can't just go through line and get the value, as hard to identify positions of some parameters 
+            pepstats_found = {}
+            current_sequence = None
+
+            with open('pepstats_all', 'r') as mat_file: #opeining file to go though it 
+                for line in mat_file:
+                    if line.startswith('PEPSTATS'): #here the accession number will be on the line that starts with PEPTATS
+                        sequence_name = line.split()[2].strip() #by splitting line getting the accession no.
+                        if sequence_name not in pepstats_found:
+                            pepstats_found[sequence_name] = {}
+                        #creating a while loop, since want certain parameters,  going through lines until the line has 'Improbability of expression in inclusion bodies'
+                            while 'Improbability of expression in inclusion bodies' not in line:
+                        #re.match will look at the match in lines of certain parameters, e.g. 'Molecular Weight ='
+                        #\S+  getting nonwhitespace caharcter after, e.g will get the value after =, \d+ will get digit 
+                                molecular_weight_match = re.match(r'Molecular weight = (\S+)', line)
+                                residues_match = re.match(r'Residues = (\d+)', line)
+                                avg_residue_weight_match = re.match(r'Average Residue Weight = (\S+)', line)
+                                charge_match = re.match(r'Charge = (\S+)', line)
+                                isoelectric_point_match = re.match(r'Isoelectric Point = (\S+)', line)
+
+                
+                #to go through each line in the file, thiugh each sequence and get matching lines that have key_value pattern: where (.+?) to match 1 or more, 0 or 1 characters(? in this case helps to catch only needed caharacters), \s*=\s* to match the = sign, and \S+ to get nonwhitespace character 
+                                key_value_match = re.match(r'(.+?)\s*=\s*(\S+)', line) 
+                                if key_value_match:
+                                    key, value = key_value_match.groups()
+                                    pepstats_found[sequence_name][key] = value
+
+                                line= next(mat_file, None) #to read next line 
+            #creating a data frame 
+
+            df = pd.DataFrame.from_dict(pepstats_found, orient='index')
+            df.fillna(0, inplace=True)
+            df.to_csv('pepstats_data.csv', index=True)
+
+get_analysis()
+time.sleep(1)
+print('CSV FILE WITH PEPSTATS DATA CREATED')
+time.sleep(1)
+print('THIS IS THE END OF THE PROGRAMME ALL FILES WERE SAVED IN THIS DIRECTORY')
+time.sleep(2)
+print('THANK YOU, BYE')
